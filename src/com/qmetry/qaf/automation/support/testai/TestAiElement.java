@@ -15,6 +15,8 @@ import javax.ws.rs.core.MediaType;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
+import org.openqa.selenium.Keys;
+
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Point;
 import org.openqa.selenium.Rectangle;
@@ -142,7 +144,11 @@ public class TestAiElement extends QAFWebComponent {
 			}
 		}
 	}
-
+	
+	@Override
+	public void waitForPresent(long... timeout) {
+		load();
+	}
 	boolean isJavascriptEnabled() {
 		return ((null ==
 		 getWrappedDriver().getCapabilities().getCapability(SUPPORTS_JAVASCRIPT))
@@ -251,7 +257,7 @@ public class TestAiElement extends QAFWebComponent {
 						.sendKeys((String) payload.getParameters().get("text")).perform();
 				break;
 			case DriverCommand.SUBMIT_ELEMENT:
-				sendKeys("\n");
+				sendKeys(Keys.ENTER);
 				break;
 			default:
 				throw new UnsupportedOperationException();
