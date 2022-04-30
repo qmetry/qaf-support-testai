@@ -16,7 +16,6 @@ import javax.ws.rs.core.MediaType;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.Keys;
-
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Point;
 import org.openqa.selenium.Rectangle;
@@ -52,6 +51,8 @@ import com.sun.jersey.core.util.MultivaluedMapImpl;
  */
 public class TestAiElement extends QAFWebComponent {
 	private static final String runID = UUID.randomUUID().toString();
+	private static final String TESTAI_SERVER = getBundle().getString("testai.server.url","https://sdk.test.ai");
+	private static final String TESTAI_APIKEY = getBundle().getString("testai.api.key");
 
 	private double multiplier;
 
@@ -85,7 +86,6 @@ public class TestAiElement extends QAFWebComponent {
 		super(parent, locator);
 	}
 
-	@SuppressWarnings({ "unchecked" })
 	@Override
 	protected void load() {
 		try {
@@ -103,6 +103,24 @@ public class TestAiElement extends QAFWebComponent {
 			}
 		} catch (TimeoutException e) {
 			// lookup
+			if(!findUsingClassification()) {
+				throw e;
+			}
+		}
+	}
+	
+	@Override
+	public void waitForPresent(long... timeout) {
+		//this is to avoid classification call every 500ms
+		load();
+	}
+	@Override
+	public boolean isPresent() {
+		return super.isPresent() || findUsingClassification();
+	}
+
+	private boolean findUsingClassification() {
+		try {
 			Map<String, Object> classification = classify(getDescription());
 			Map<String, Object> eleFromClassification = (Map<String, Object>) classification.get("elem");
 
@@ -116,9 +134,10 @@ public class TestAiElement extends QAFWebComponent {
 						((Number) eleFromClassification.get("y")).intValue() / (int) multiplier);
 				int cX = location.x + size.width / 2;
 				int cY = location.y + size.height / 2;
-				
-				QAFExtendedWebElement eleByJs = new QAFExtendedWebElement(
-						String.format("js=return document.elementFromPoint(%d, %d) || document.elementFromPoint(%d, %d);", cX, cY,location.x, location.y));
+
+				QAFExtendedWebElement eleByJs = new QAFExtendedWebElement(String.format(
+						"js=return document.elementFromPoint(%d, %d) || document.elementFromPoint(%d, %d);", cX, cY,
+						location.x, location.y));
 
 				if (isJavascriptEnabled() && eleByJs.isPresent()) {
 					setId(eleByJs.getId());
@@ -133,26 +152,24 @@ public class TestAiElement extends QAFWebComponent {
 
 					getMetaData().put("x", location.x);
 					getMetaData().put("y", location.y);
+					getMetaData().put("cX", cX);
+					getMetaData().put("cY", cY);
 					getMetaData().put("width", size.width);
 					getMetaData().put("height", size.height);
 					// this.property = property //TODO: not referenced/implemented on python side??
 					// getMetaData().put("rectangle", new Rectangle(location, size));
 				}
+				return true;
 			}
-			if (null == id || (id == "-1")) {
-				throw e;
-			}
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
+		return false;
 	}
-	
-	@Override
-	public void waitForPresent(long... timeout) {
-		load();
-	}
+
 	boolean isJavascriptEnabled() {
-		return ((null ==
-		 getWrappedDriver().getCapabilities().getCapability(SUPPORTS_JAVASCRIPT))
-		 || getWrappedDriver().getCapabilities().is(SUPPORTS_JAVASCRIPT));
+		return ((null == getWrappedDriver().getCapabilities().getCapability(SUPPORTS_JAVASCRIPT))
+				|| getWrappedDriver().getCapabilities().is(SUPPORTS_JAVASCRIPT));
 	}
 
 	private Map<String, Object> classify(String elementName) {
@@ -169,13 +186,13 @@ public class TestAiElement extends QAFWebComponent {
 					/ getWrappedDriver().manage().window().getSize().width;
 
 			
-			Map<String, String> formParams = ImmutableMap.of("api_key", getBundle().getString("testai.api.key"), "screenshot",
+			Map<String, String> formParams = ImmutableMap.of("api_key", TESTAI_APIKEY, "screenshot",
 					screenshotBase64, "source", pageSource, "label", elementName, "runId", runID);
 			
 			MultivaluedMapImpl form =new MultivaluedMapImpl();
 			for(Entry<String, String> kv : formParams.entrySet()) {form.putSingle(kv.getKey(),kv.getValue());}
 
-			ClientResponse res = getClient().resource(getBundle().getString("testai.server.url")).path("classify")
+			ClientResponse res = getClient().resource(TESTAI_SERVER).path("classify")
 					.type(MediaType.APPLICATION_FORM_URLENCODED_TYPE).post(ClientResponse.class,form);
 
 			String resString = res.getEntity(String.class);
@@ -191,7 +208,7 @@ public class TestAiElement extends QAFWebComponent {
 
 				if (rawMsg.contains("Please label") || rawMsg.contains("Did not find"))
 					msg = String.format("%s%s - Please visit %s/label/%s to classify", cFailedBase, elementName,
-							getBundle().getString("testai.server.url"), elementName);
+							TESTAI_SERVER, elementName);
 				else if (rawMsg.contains("frozen label"))
 					msg = String.format(
 							"%s%s - However this element is frozen, so no new screenshot was uploaded. Please unfreeze the element if you want to add this screenshot to training",
@@ -216,12 +233,12 @@ public class TestAiElement extends QAFWebComponent {
 		String payload = String.format("{\"key\":\"%s\",\"api_key\":\"%s\",\"run_id\":\"%s\","
 				+ "\"x\":%s,\"y\":%s,\"width\":%s, \"height\":%s,"
 				+ "\"multiplier\":%s,\"train_if_necessary\":%s,\"label\":\"%s\"}",
-				key, getBundle().getString("testai.api.key"), runID,
+				key, TESTAI_APIKEY, runID,
 				rect.x, rect.y, rect.width, rect.height,
 				multiplier, trainIfNecessary, elementName);
 		
 		
-		ClientResponse res = getClient().resource(getBundle().getString("testai.server.url")).path("add_action").type(MediaType.APPLICATION_JSON).post(ClientResponse.class,payload);     
+		ClientResponse res = getClient().resource(TESTAI_SERVER).path("add_action").type(MediaType.APPLICATION_JSON).post(ClientResponse.class,payload);     
 		if(res.getStatus()==200) {
 			logger.info("Successfully updated: " + elementName);
 		}else {
@@ -248,13 +265,18 @@ public class TestAiElement extends QAFWebComponent {
 				break;
 			case DriverCommand.CLICK:
 			case DriverCommand.CLICK_ELEMENT:
-				Point loc = getLocation();
-				new Actions(getWrappedDriver()).moveByOffset(loc.getX(), loc.getY()).click().perform();
+				new Actions(getWrappedDriver())
+						.moveByOffset((int) getMetaData().get("cX"), (int) getMetaData().get("cY")).click().perform();
 				break;
 			case DriverCommand.SEND_KEYS_TO_ELEMENT:
-				Point loc2 = getLocation();
-				new Actions(getWrappedDriver()).moveByOffset(loc2.getX(), loc2.getY()).click()
+				new Actions(getWrappedDriver())
+						.moveByOffset((int) getMetaData().get("cX"), (int) getMetaData().get("cY")).click()
 						.sendKeys((String) payload.getParameters().get("text")).perform();
+				break;
+			case DriverCommand.CLEAR_ELEMENT:
+				new Actions(getWrappedDriver())
+						.moveByOffset((int) getMetaData().get("cX"), (int) getMetaData().get("cY")).click()
+						.sendKeys(Keys.CLEAR).perform();
 				break;
 			case DriverCommand.SUBMIT_ELEMENT:
 				sendKeys(Keys.ENTER);
