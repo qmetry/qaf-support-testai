@@ -20,3 +20,5 @@ testai.training.mode - (optional) boolean default true, enable/disable training 
 ```
 
 In order to use test.ai you need to run your test(s) at least once in training mode. You can disable training mode after one or more execution in training mode to improve execution performance.
+
+Here is [demo project](https://github.com/qmetry/qaf-support-testai/files/8595394/qaf-testai-demo.zip) to try this library.
